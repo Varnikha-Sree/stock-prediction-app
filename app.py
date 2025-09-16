@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression
 import datetime
 
@@ -10,21 +10,16 @@ import datetime
 # Page config
 # -------------------------------
 st.set_page_config(page_title="Stock Prediction App", layout="wide")
-st.title("📈 Stock Price Prediction Dashboard")
+st.title("📈 Stock Price Prediction Dashboard (Animated)")
 
 # -------------------------------
 # Sidebar Inputs
 # -------------------------------
 st.sidebar.header("User Input")
 
-# Stock ticker input
 ticker_symbol = st.sidebar.text_input("Enter Stock Ticker (e.g. AAPL, TSLA, TCS.NS):", "AAPL")
-
-# Date range
 start_date = st.sidebar.date_input("Start Date", datetime.date(2020, 1, 1))
 end_date = st.sidebar.date_input("End Date", datetime.date.today())
-
-# Prediction horizon
 days_ahead = st.sidebar.slider("Predict days into future:", 1, 30, 7)
 
 # -------------------------------
@@ -41,13 +36,7 @@ try:
         st.write(data.tail())
 
         # -------------------------------
-        # Plot Stock Prices
-        # -------------------------------
-        st.subheader("Stock Price Chart")
-        st.line_chart(data["Close"])
-
-        # -------------------------------
-        # Prepare data for prediction
+        # Prediction
         # -------------------------------
         data = data.reset_index()
         data['Date_ordinal'] = pd.to_datetime(data['Date']).map(datetime.datetime.toordinal)
@@ -55,7 +44,6 @@ try:
         X = np.array(data['Date_ordinal']).reshape(-1, 1)
         y = np.array(data['Close'])
 
-        # Train simple linear regression
         model = LinearRegression()
         model.fit(X, y)
 
@@ -64,23 +52,57 @@ try:
         future_ordinals = np.array([d.toordinal() for d in future_dates]).reshape(-1, 1)
         future_preds = model.predict(future_ordinals)
 
-        # -------------------------------
-        # Show Predictions
-        # -------------------------------
-        st.subheader("Predicted Prices")
         pred_df = pd.DataFrame({"Date": future_dates, "Predicted Price": future_preds})
+        st.subheader("Predicted Prices")
         st.write(pred_df)
 
         # -------------------------------
-        # Plot Predictions
+        # Animated Plotly Chart
         # -------------------------------
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(data["Date"], data["Close"], label="Historical Price", color="blue")
-        ax.plot(future_dates, future_preds, label="Predicted Price", color="green", linestyle="dashed")
-        ax.set_xlabel("Date")
-        ax.set_ylabel("Price")
-        ax.legend()
-        st.pyplot(fig)
+        fig = go.Figure()
+
+        # Historical Line
+        fig.add_trace(go.Scatter(
+            x=data["Date"], y=data["Close"],
+            mode="lines",
+            name="Historical Price",
+            line=dict(color="royalblue", width=2)
+        ))
+
+        # Prediction Line (Animated)
+        fig.add_trace(go.Scatter(
+            x=pred_df["Date"], y=pred_df["Predicted Price"],
+            mode="lines+markers",
+            name="Predicted Price",
+            line=dict(color="limegreen", width=3, dash="dash")
+        ))
+
+        # Animation frames (simulate slow stock movement)
+        frames = [
+            go.Frame(
+                data=[go.Scatter(x=pred_df["Date"][:k], y=pred_df["Predicted Price"][:k])],
+                name=str(k)
+            )
+            for k in range(1, len(pred_df)+1)
+        ]
+
+        fig.frames = frames
+
+        fig.update_layout(
+            xaxis_title="Date",
+            yaxis_title="Stock Price (USD)",
+            template="plotly_dark",
+            updatemenus=[{
+                "type": "buttons",
+                "buttons": [
+                    {"label": "▶ Play", "method": "animate", "args": [None, {"frame": {"duration": 800, "redraw": True}, "fromcurrent": True}]},
+                    {"label": "⏸ Pause", "method": "animate", "args": [[None], {"frame": {"duration": 0}, "mode": "immediate"}]}
+                ]
+            }]
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
     st.error(f"Error fetching data: {e}")
+
